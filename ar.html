@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>XR Spinosaurus</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script>
+        var origins = [];
+        var items = [];
+
+        var raycaster = new THREE.Raycaster();
+        var mouse = new THREE.Vector2();
+
+        window.addEventListener("touchstart", (event) => {
+            console.log("TOUCHSTART")
+            // event.preventDefault();
+            const touche = event.touches[0]
+            mouse.x = ( touche.clientX / window.innerWidth ) * 2 - 1;
+            mouse.y = - ( touche.clientY / window.innerHeight ) * 2 + 1;
+            // console.log(mouse)
+            const scene = document.querySelector('a-scene');
+            const camera = scene.camera;
+            raycaster.setFromCamera( mouse, camera );
+            console.log(scene.object3D.children);
+            const intersects = raycaster.intersectObjects( scene.object3D.children, true );
+            if (intersects.length > 0) {
+                console.log("INTERSECTS LENGTH", intersects.length)
+                console.log("INTERSEC", intersects)
+                for (let intersect of intersects) {
+                    if (intersect.object.el && intersect.object.el.id !== "idreticle"){
+                        intersect.object.visible = false
+                        console.log(intersect)
+                    }
+                }
+                // console.log("INTERSECTS", intersects);
+                // const highlightedMaterial = new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 })
+            }
+        })
+
+
+        AFRAME.registerComponent('ar-hit-test', {
+            init: function () {
+                this.xrHitTestSource = null;
+                this.viewerSpace = null;
+                this.refSpace = null;
+
+                this.el.sceneEl.renderer.xr.addEventListener('sessionend', (ev) => {
+                    this.viewerSpace = null;
+                    this.refSpace = null;
+                    this.xrHitTestSource = null;
+                });
+                this.el.sceneEl.renderer.xr.addEventListener('sessionstart', (ev) => {
+                    let session = this.el.sceneEl.renderer.xr.getSession();
+
+                    let element = this.el;
+                    // session.addEventListener('select', function () {
+                    //     // console.log("DONE !!!")
+                    //     let position = element.getAttribute('position');
+
+                    //     const point = document.createElement("a-box")
+                    //     point.setAttribute("color", "tomato")
+                    //     point.setAttribute("depth", "0.05")
+                    //     point.setAttribute("height", "0.05")
+                    //     point.setAttribute("width", "0.05")
+                    //     point.setAttribute("position", {
+                    //         x: position.x,
+                    //         y: position.y,
+                    //         z: position.z
+                    //     })
+
+                    //     origins.push(point.position)
+
+                    //     element.sceneEl.appendChild(point)
+                    // });
+
+                    session.requestReferenceSpace('viewer').then((space) => {
+                        this.viewerSpace = space;
+                        session.requestHitTestSource({space: this.viewerSpace})
+                            .then((hitTestSource) => {
+                                this.xrHitTestSource = hitTestSource;
+                            });
+                    });
+
+                    session.requestReferenceSpace('local').then((space) => {
+                        this.refSpace = space;
+                    });
+                });
+            },
+            tick: function () {
+                if (this.el.sceneEl.is('ar-mode')) {
+                    if (!this.viewerSpace) return;
+
+                    let frame = this.el.sceneEl.frame;
+                    let xrViewerPose = frame.getViewerPose(this.refSpace);
+
+                    if (this.xrHitTestSource && xrViewerPose) {
+                        let hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
+                        if (hitTestResults.length > 0) {
+                            let pose = hitTestResults[0].getPose(this.refSpace);
+
+                            let inputMat = new THREE.Matrix4();
+                            inputMat.fromArray(pose.transform.matrix);
+
+                            let position = new THREE.Vector3();
+                            position.setFromMatrixPosition(inputMat);
+                            this.el.setAttribute('position', position);
+                        }
+                    }
+
+                }
+            }
+        });
+
+        function makeWall(e) {
+            createFloor();
+            createWall();
+        }
+
+        function createFloor() {
+            const geometry = new THREE.BufferGeometry();
+            let positions = [];
+            for (let [idx, origin] of origins.entries()) {
+                if (idx < origins.length - 2) {
+                    const idx1 = idx + 1;
+                    const idx2 = idx + 2;
+                    //
+                    positions = positions.concat([
+                        origins[0][0], origins[0][1], origins[0][2],
+                        origins[idx1][0], origins[idx1][1], origins[idx1][2],
+                        origins[idx2][0], origins[idx2][1], origins[idx2][2],
+                    ])
+
+                }
+            }
+
+            geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xcecece,
+                flatShading: true,
+            });
+            material.side = THREE.DoubleSide;
+            const mesh = new THREE.Mesh(geometry, material);
+
+            const entity = document.createElement("a-entity");
+            entity.object3D.add(mesh);
+            entity.object3D.userData.name = "Floor"
+
+            const scene = document.querySelector("a-scene");
+            scene.appendChild(entity)
+        }
+
+        function createWall() {
+            const geometry = new THREE.BufferGeometry();
+            let positions = [];
+            const height = 0.5;
+            for (let idx = 0; idx < origins.length; idx++) {
+                if (idx < origins.length - 1) {
+                    positions = positions.concat([
+                        origins[idx][0], origins[idx][1], origins[idx][2],
+                        origins[idx][0], origins[idx][1] + height, origins[idx][2],
+                        origins[idx + 1][0], origins[idx + 1][1] + height, origins[idx + 1][2],
+
+                        origins[idx + 1][0], origins[idx + 1][1] + height, origins[idx + 1][2],
+                        origins[idx + 1][0], origins[idx + 1][1], origins[idx + 1][2],
+                        origins[idx][0], origins[idx][1], origins[idx][2],
+                    ])
+                } else {
+                    positions = positions.concat([
+                        origins[idx][0], origins[idx][1], origins[idx][2],
+                        origins[idx][0], origins[idx][1] + height, origins[idx][2],
+                        origins[0][0], origins[0][1] + height, origins[0][2],
+
+                        origins[0][0], origins[0][1] + height, origins[0][2],
+                        origins[0][0], origins[0][1], origins[0][2],
+                        origins[idx][0], origins[idx][1], origins[idx][2],
+                    ])
+                }
+            }
+            geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x62727d,
+                flatShading: true,
+            });
+            material.side = THREE.DoubleSide;
+            const mesh = new THREE.Mesh(geometry, material);
+
+            const entity = document.createElement("a-entity");
+            entity.object3D.add(mesh);
+            entity.object3D.userData.name = "wall"
+
+            const scene = document.querySelector("a-scene");
+            scene.appendChild(entity)
+        }
+
+        function createReticle() {
+            const reticle = document.querySelector("#idreticle");
+            const scene = document.querySelector("a-scene");
+            if (reticle.getAttribute("visible")) {
+                const point = document.createElement("a-box")
+                const position = reticle.getAttribute('position')
+                point.setAttribute("color", "tomato")
+                point.setAttribute("depth", "0.02")
+                point.setAttribute("height", "0.02")
+                point.setAttribute("width", "0.02")
+                point.setAttribute("position", {
+                    x: position.x,
+                    y: position.y,
+                    z: position.z
+                })
+
+                origins.push([position.x, position.y, position.z])
+                items.push(point)
+
+                scene.appendChild(point)
+            }
+        }
+
+        function createChair() {
+            const reticle = document.querySelector("#idreticle");
+            const scene = document.querySelector("a-scene");
+            if (reticle.getAttribute("visible")) {
+                const entity = document.createElement("a-entity");
+                const position = reticle.getAttribute('position');
+                entity.setAttribute("position", {
+                    x: position.x,
+                    y: position.y,
+                    z: position.z
+                });
+                entity.setAttribute("scale", "0.8 0.8 0.8");
+                entity.setAttribute("gltf-model", "#chair");
+
+                scene.appendChild(entity)
+            };
+        }
+    </script>
+    <style>
+        .info-area {
+            position: fixed;
+            top: 0;
+            left: 0;
+            padding: 8px;
+            width:100%;
+            text-align: center;
+            z-index: 100000;
+            background-color: red;
+        }
+    </style>
+</head>
+<body>
+<div id="overlay">
+    <div class="info-area">
+        <button onclick="makeWall(event)">
+            Make wall
+        </button>
+        <button onclick="createReticle()">
+            Create reticle
+        </button>
+        <button onclick="createChair()">
+            Create chair
+        </button>
+    </div>
+</div>
+<a-scene webxr="requiredFeatures: hit-test,local;
+                referenceSpaceType:local;
+                optionalFeatures: dom-overlay;
+                overlayElement: #overlay;"
+         style="height: calc(100vh - 50px);">
+    <a-assets>
+        <a-asset-item id="reticle"
+                      src="https://immersive-web.github.io/webxr-samples/media/gltf/reticle/reticle.gltf"
+                      response-type="arraybuffer"></a-asset-item>
+        <a-asset-item id="chair"
+                      src="https://immersive-web.github.io/webxr-samples/media/gltf/sunflower/sunflower.gltf"
+                      response-type="arraybuffer"></a-asset-item>
+    </a-assets>
+    <a-entity id="idreticle" gltf-model="#reticle" scale="0.8 0.8 0.8" ar-hit-test></a-entity>
+</a-scene>
+</body>
+</html>

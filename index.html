@@ -1,0 +1,336 @@
+<html> 
+  <head>
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+       <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+       <script src="https://cdn.jsdelivr.net/npm/zlibjs@0.3.1/bin/zlib.min.js"></script>
+       <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
+       <style type="text/css">
+            .actor {
+                width: 75px; 
+                margin-bottom: 5px;
+            }
+            #select-actor, #enter-ar, #has-actor {
+                text-align: center;
+                position: absolute;
+                bottom: 50;
+                left: 50vw;
+                transform: translateX(-50%);
+                z-index: 10000;
+            }
+            .btn-select {
+              width: 60px; 
+              height: 60px; 
+              border-radius: 50%;
+            }
+            #actors {
+              position: absolute; 
+              padding: 10px; 
+              top: 0;
+              left: 0; 
+              overflow: scroll;
+              width: calc(100vw - 20px); 
+              height: 100vh;
+              display: block; 
+              flex-wrap: wrap; 
+              justify-content: space-between; 
+              background: white;
+            }
+            #actors-content {
+              display: flex;
+              justify-content: space-between;
+              flex-wrap: wrap;
+            }
+       </style>
+       <script>
+          let positionReticle;
+        //   window.addEventListener("touchstart", (event) => {
+        //     console.log("TOUCH START")
+        //       if (positionReticle) {
+        //         console.log("POSITION", positionReticle)
+        //           const dino = document.getElementById("dino");
+        //           dino.setAttribute("position", positionReticle)
+        //       }
+        //   });
+
+          AFRAME.registerComponent('ar-hit-test', {
+              init: function () {
+                  this.xrHitTestSource = null;
+                  this.viewerSpace = null;
+                  this.refSpace = null;
+
+                  this.el.sceneEl.renderer.xr.addEventListener('sessionend', (ev) => {
+                      this.viewerSpace = null;
+                      this.refSpace = null;
+                      this.xrHitTestSource = null;
+                  });
+                  this.el.sceneEl.renderer.xr.addEventListener('sessionstart', (ev) => {
+                      let session = this.el.sceneEl.renderer.xr.getSession();
+
+                      let element = this.el;
+
+                      session.requestReferenceSpace('viewer').then((space) => {
+                          this.viewerSpace = space;
+                          session.requestHitTestSource({space: this.viewerSpace})
+                              .then((hitTestSource) => {
+                                  this.xrHitTestSource = hitTestSource;
+                              });
+                      });
+
+                      session.requestReferenceSpace('local').then((space) => {
+                          this.refSpace = space;
+                      });
+                      session.addEventListener('select', () => {
+                          const reticle = document.getElementById("idreticle")
+                          const positon = reticle.getAttribute("position")
+                          if (currentActor && currentStep == step.AR_HAS_ACTOR) {
+                            // const dino = document.getElementById("dino")
+                            // dino.setAttribute("position", `${positon.x} ${positon.y} ${positon.z}`)
+                            const scene = document.querySelector('a-scene')
+                            const entity = document.createElement("a-entity");
+                            entity.setAttribute("position", `${positon.x} ${positon.y} ${positon.z}`)
+                            entity.setAttribute("animation-mixer","clip:Take 001;")
+                            entity.setAttribute("scale", "0.003 0.003 0.003")
+                            entity.setAttribute("fbx-model",`src: url(${currentActor.url});`)
+                            scene.appendChild(entity)
+
+                            currentActor = null;
+                            currentStep = step.SELECT_ACTOR;
+                            showOverlay(currentStep);
+                          }
+                      });
+                  });
+              },
+              tick: function () {
+                  if (this.el.sceneEl.is('ar-mode')) {
+                      if (!this.viewerSpace) return;
+
+                      let frame = this.el.sceneEl.frame;
+                      let xrViewerPose = frame.getViewerPose(this.refSpace);
+
+                      if (this.xrHitTestSource && xrViewerPose) {
+                          let hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
+                          if (hitTestResults.length > 0) {
+                              let pose = hitTestResults[0].getPose(this.refSpace);
+
+                              let inputMat = new THREE.Matrix4();
+                              inputMat.fromArray(pose.transform.matrix);
+
+                              let position = new THREE.Vector3();
+                              position.setFromMatrixPosition(inputMat);
+                              positionReticle = position;
+                              this.el.setAttribute('position', position);
+                          }
+                      }
+
+                  }
+              }
+          });
+      </script>
+  </head>
+  <body>
+    <div id="overlay" style="width: 100vw; height: 100vh;z-index: 1000;">
+        <div id="enter-ar">
+          <button onclick="goToAr()" class="btn-select" >
+          </button>
+        </div>
+        <div id="select-actor">
+            <button onclick="showActorList()" class="btn-select">
+            </button>
+        </div>
+        <div id="actors">
+          <div id="actors-content">
+
+          </div>
+        </div>
+        <div id="has-actor">
+
+        </div>
+    </div>
+    <a-scene webxr="requiredFeatures: hit-test,local;
+    referenceSpaceType:local;
+    optionalFeatures: dom-overlay;
+    overlayElement: #overlay;">
+        <a-assets>
+            <a-asset-item id="reticle"
+                          src="https://immersive-web.github.io/webxr-samples/media/gltf/reticle/reticle.gltf"
+                          response-type="arraybuffer"></a-asset-item>
+            <a-asset-item id="chair"
+                          src="https://immersive-web.github.io/webxr-samples/media/gltf/sunflower/sunflower.gltf"
+                          response-type="arraybuffer"></a-asset-item>
+        </a-assets>
+        <a-assets>
+          <a-asset-item id="bird" response-type="arraybuffer" src="https://cdn.glitch.com/1061d524-9d0f-4b25-97fd-48ebd0fce63c%2Fsceneglb.glb?1546534633849"></a-asset-item>
+        </a-assets>
+<!--        <a-entity id="dino" gltf-model="#bird" scale="0.001 0.001 0.001" position="0 0 0" animation-mixer="clip:Take 001;"></a-entity>-->
+         <!-- <a-entity id="dino" fbx-model="src: url(models/dino_Ver2.fbx);" scale="0.003 0.003 0.003" position="0 0 0" animation-mixer="clip:Take 001;"></a-entity> -->
+<!--        &lt;!&ndash; <a-camera position="0 2 4"> &ndash;&gt;-->
+<!--      </a-camera>-->
+        <a-entity id="idreticle" gltf-model="#reticle" scale="0.8 0.8 0.8" ar-hit-test></a-entity>
+
+      </a-scene>
+      <script>
+          const step = {
+            AR: 1,
+            LIST_ACTOR: 2,
+            SELECT_ACTOR: 4,
+            AR_HAS_ACTOR: 3,
+          };
+          let currentStep = step.AR;
+          var currentActor;
+          var actors = [
+              {
+                url: "models/Dino_Circle_1_1.fbx", 
+                name: "Dino Circle1_1",
+                avatar: "avatar/Dino1_1.png"
+              },
+              {
+                url: "models/Dino_Idle_1_2.fbx", 
+                name: "Dino_Idle_1_2",
+                avatar: "avatar/Dino1_2.png"
+              }, 
+              {
+                url: "models/Dino_Jump_1_3.fbx.fbx", 
+                name: "Dino_Jump_1_3",
+                avatar: "avatar/Dino1_3.png"
+              }, 
+              {
+                url: "models/Dino_Shot_1_4.fbx", 
+                name: "Dino_Shot_1_4",
+                avatar: "avatar/Dino1_4.png"
+              },
+              {
+                url: "models/Dino_HeadBut_1_5.fbx", 
+                name: "Dino_HeadBut_1_5",
+                avatar: "avatar/Dino1_5.png"
+              }, 
+              {
+                 url: "Dino_2/Dino_Stun_2_1.fbx", 
+                 name: "DDino_Stun_2_1",
+                 avatar: "avatar/Dino2_1.png"
+              },
+              {
+                 url: "Dino_2/Dino_CuteA_2_2.fbx", 
+                 name: "Dino_CuteA_2_2",
+                 avatar: "avatar/Dino2_2.png"
+              },
+              {
+                url: "Dino_2/Dino_Eat_2_3.fbx", 
+                name: "Dino_Eat_2_3",
+                avatar: "avatar/Dino2_3.png"
+              }, 
+              {
+                 url: "Dino_2/Dino_HeadBut_V2_2_4.fbx", 
+                 name: "Dino_HeadBut_V2_2_4",
+                 avatar: "avatar/Dino2_4.png"
+              }, 
+              {
+                url: "Dino_2/Dino_Attack_2_5.fbx", 
+                name: "Dino_Attack_2_5",
+                avatar: "avatar/Dino2_5.png"
+              },     
+              {
+               url: "models/Dino_Hello_3_1.fbx", 
+               name: "Dino_Hello_3_1",
+               avatar: "avatar/Dino3_1.png"
+              },
+              {
+              url: "models/Dino_Sick_3_2.fbx", 
+              name: "Dino_Sick_3_2",
+              avatar: "avatar/Dino3_2.png"
+              }, 
+              {
+                url: "models/Dino_Attack_3_3.fbx", 
+                name: "Dino_Attack_3_3",
+                avatar: "avatar/Dino3_3.png"
+              }, 
+              {
+                url: "models/Dino_HeadBut_3_4.fbx", 
+                name: "Dino_HeadBut_3_4",
+                avatar: "avatar/Dino3_4.png"
+              }, 
+              {
+                url: "models/Dino_HeadBut_V2_3_5.fbx", 
+                name: "Dino_HeadBut_V2_3_5.fbx",
+                avatar: "avatar/Dino3_5.png"
+              },
+              {
+                url: "Dino_Attack/Dino vs Boss.fbx", 
+                name: "Dino vs Boss",
+                avatar: "avatar/Dino3_2.png"
+              }, {
+                url: "Dino_Attack/Dino vs Enemy.fbx", 
+                name: "Dino vs Enemy",
+                avatar: "avatar/Dino3_2.png"
+              }
+          ];
+          var elementOverlay = [
+              {
+                active: step.AR,
+                element: document.querySelector("#enter-ar")
+              }, 
+              {
+                active: step.LIST_ACTOR,
+                element: document.querySelector("#actors")
+              }, 
+              {
+                active: step.SELECT_ACTOR,
+                element: document.querySelector("#select-actor")
+              },
+              {
+                active: step.AR_HAS_ACTOR,
+                element: document.querySelector("#has-actor")
+              }
+          ]
+
+          getActors();
+          showOverlay(currentStep);
+
+          function showOverlay(currentStep){
+            elementOverlay.forEach(item => {
+                const {element, active} = item;
+                if (currentStep !== active) {
+                  element.style.display = "none";
+                } else {
+                  element.style.display = "block";
+                }
+            })
+          }
+          function getActors(){
+            const actorsElement = document.querySelector("#actors-content");
+            actors.forEach(item => {
+                const element = document.createElement("div");
+                element.classList.add("actor");
+                // element.innerText = item.name;
+                element.innerHTML = `<img style="width:75px;height:85px;object-fix:cover" src="${item.avatar}" />`
+                element.innerHTML += `<span style="overflow-wrap: break-word;">${item.name}</span>`
+                element.addEventListener("click", () => {
+                  currentActor = item;
+                  setTimeout(() => {
+                    currentStep = step.AR_HAS_ACTOR;
+                    showOverlay(currentStep);
+                    const hasActorElement = document.querySelector("#has-actor");
+                    hasActorElement.innerHTML = `<img style="width:75px;height:85px;object-fix:cover" src="${item.avatar}" />`
+                  }, 500)
+                })
+                actorsElement.appendChild(element);
+            });
+          }
+
+          function showActorList() {
+            currentStep = step.LIST_ACTOR;
+            showOverlay(currentStep)
+          }
+          function chooseActor(actor) {
+            currentActor = actor;
+          }
+          function goToAr(){
+              if (currentStep == step.AR) {
+                currentStep = step.SELECT_ACTOR;
+                showOverlay(currentStep);
+                const scene = document.querySelector("a-scene")
+                scene.enterAR();
+              } 
+          }
+      </script>
+  </body>
+</html>
